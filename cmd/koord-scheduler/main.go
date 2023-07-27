@@ -33,6 +33,8 @@ import (
 	"github.com/koordinator-sh/koordinator/pkg/scheduler/plugins/nodenumaresource"
 	"github.com/koordinator-sh/koordinator/pkg/scheduler/plugins/reservation"
 
+	"git.n.xiaomi.com/miks/kube-scheduler/pkg/lvmscheduling"
+
 	// Ensure metric package is initialized
 	_ "k8s.io/component-base/metrics/prometheus/clientgo"
 	// Ensure scheme package is initialized.
@@ -47,6 +49,7 @@ var koordinatorPlugins = map[string]frameworkruntime.PluginFactory{
 	deviceshare.Name:      deviceshare.New,
 	elasticquota.Name:     elasticquota.New,
 	defaultprebind.Name:   defaultprebind.New,
+	lvmscheduling.Name:    lvmscheduling.New,
 }
 
 func flatten(plugins map[string]frameworkruntime.PluginFactory) []app.Option {

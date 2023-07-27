@@ -3,6 +3,7 @@ module github.com/koordinator-sh/koordinator
 go 1.18
 
 require (
+	git.n.xiaomi.com/miks/kube-scheduler v0.0.0
 	github.com/NVIDIA/go-nvml v0.11.6-0.0.20220823120812-7e2082095e82
 	github.com/cakturk/go-netstat v0.0.0-20200220111822-e5b49efee7a5
 	github.com/containerd/nri v0.3.0
@@ -231,6 +232,7 @@ require (
 )
 
 replace (
+	git.n.xiaomi.com/miks/kube-scheduler => git.n.xiaomi.com/miks/kube-scheduler v0.0.2-0.20230727090037-f6c196bac4b3
 	github.com/go-logr/logr => github.com/go-logr/logr v1.2.0
 	github.com/google/cadvisor => github.com/koordinator-sh/cadvisor v0.0.0-20230619152730-4b5c088201f6
 	github.com/gophercloud/gophercloud => github.com/gophercloud/gophercloud v0.1.0
