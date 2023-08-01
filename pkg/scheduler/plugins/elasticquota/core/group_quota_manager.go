@@ -618,6 +618,15 @@ func (gqm *GroupQuotaManager) GetQuotaSummaries() map[string]*QuotaInfoSummary {
 	return result
 }
 
+func (gqm *GroupQuotaManager) GetQuotaManager() map[string]interface{} {
+	gqm.hierarchyUpdateLock.RLock()
+	defer gqm.hierarchyUpdateLock.RUnlock()
+	result := make(map[string]interface{})
+	result[extension.TotalResourceExceptSystemAndDefaultUsed] = &gqm.totalResourceExceptSystemAndDefaultUsed
+	result[extension.TotalResource] = &gqm.totalResource
+	return result
+}
+
 func (gqm *GroupQuotaManager) OnPodAdd(quotaName string, pod *v1.Pod) {
 	gqm.hierarchyUpdateLock.RLock()
 	defer gqm.hierarchyUpdateLock.RUnlock()

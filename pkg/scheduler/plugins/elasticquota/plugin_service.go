@@ -40,4 +40,8 @@ func (g *Plugin) RegisterEndpoints(group *gin.RouterGroup) {
 		quotaSummaries := g.GetQuotaSummaries()
 		c.JSON(http.StatusOK, quotaSummaries)
 	})
+	group.GET("/manager", func(c *gin.Context) {
+		quotaManager := g.GetQuotaManager()
+		c.JSON(http.StatusOK, quotaManager)
+	})
 }

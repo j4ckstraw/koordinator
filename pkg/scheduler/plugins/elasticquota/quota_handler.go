@@ -83,3 +83,7 @@ func (g *Plugin) GetQuotaSummary(quotaName string) (*core.QuotaInfoSummary, bool
 func (g *Plugin) GetQuotaSummaries() map[string]*core.QuotaInfoSummary {
 	return g.groupQuotaManager.GetQuotaSummaries()
 }
+
+func (g *Plugin) GetQuotaManager() map[string]interface{} {
+	return g.groupQuotaManager.GetQuotaManager()
+}

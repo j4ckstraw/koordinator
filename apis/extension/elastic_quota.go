@@ -27,17 +27,19 @@ import (
 
 // RootQuotaName means quotaTree's root\head.
 const (
-	SystemQuotaName        = "koordinator-system-quota"
-	RootQuotaName          = "koordinator-root-quota"
-	DefaultQuotaName       = "koordinator-default-quota"
-	QuotaKoordinatorPrefix = "quota.scheduling.koordinator.sh"
-	LabelQuotaIsParent     = QuotaKoordinatorPrefix + "/is-parent"
-	LabelQuotaParent       = QuotaKoordinatorPrefix + "/parent"
-	LabelAllowLentResource = QuotaKoordinatorPrefix + "/allow-lent-resource"
-	LabelQuotaName         = QuotaKoordinatorPrefix + "/name"
-	AnnotationSharedWeight = QuotaKoordinatorPrefix + "/shared-weight"
-	AnnotationRuntime      = QuotaKoordinatorPrefix + "/runtime"
-	AnnotationRequest      = QuotaKoordinatorPrefix + "/request"
+	SystemQuotaName                         = "koordinator-system-quota"
+	RootQuotaName                           = "koordinator-root-quota"
+	DefaultQuotaName                        = "koordinator-default-quota"
+	QuotaKoordinatorPrefix                  = "quota.scheduling.koordinator.sh"
+	TotalResourceExceptSystemAndDefaultUsed = "totalResourceExceptSystemAndDefaultUsed"
+	TotalResource                           = "totalResource"
+	LabelQuotaIsParent                      = QuotaKoordinatorPrefix + "/is-parent"
+	LabelQuotaParent                        = QuotaKoordinatorPrefix + "/parent"
+	LabelAllowLentResource                  = QuotaKoordinatorPrefix + "/allow-lent-resource"
+	LabelQuotaName                          = QuotaKoordinatorPrefix + "/name"
+	AnnotationSharedWeight                  = QuotaKoordinatorPrefix + "/shared-weight"
+	AnnotationRuntime                       = QuotaKoordinatorPrefix + "/runtime"
+	AnnotationRequest                       = QuotaKoordinatorPrefix + "/request"
 )
 
 func GetParentQuotaName(quota *v1alpha1.ElasticQuota) string {
