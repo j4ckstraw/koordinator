@@ -4,7 +4,7 @@ GIT_BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD)
 GIT_COMMIT_ID ?= $(shell git rev-parse --short HEAD)
 
 # Image URL to use all building/pushing image targets
-REG ?= ghcr.io
+REG ?= micr.cloud.mioffice.cn
 REG_NS ?= koordinator-sh
 REG_USER ?= ""
 REG_PWD ?= ""
