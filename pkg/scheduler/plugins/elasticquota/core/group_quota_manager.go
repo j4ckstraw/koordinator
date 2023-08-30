@@ -66,6 +66,7 @@ func NewGroupQuotaManager(systemGroupMax, defaultGroupMax v1.ResourceList) *Grou
 	quotaManager.quotaInfoMap[extension.SystemQuotaName].setMaxQuotaNoLock(systemGroupMax)
 	quotaManager.quotaInfoMap[extension.DefaultQuotaName] = NewQuotaInfo(false, true, extension.DefaultQuotaName, extension.RootQuotaName)
 	quotaManager.quotaInfoMap[extension.DefaultQuotaName].setMaxQuotaNoLock(defaultGroupMax)
+	quotaManager.quotaInfoMap[extension.RootQuotaName] = NewQuotaInfo(true, false, extension.RootQuotaName, "")
 	quotaManager.runtimeQuotaCalculatorMap[extension.RootQuotaName] = NewRuntimeQuotaCalculator(extension.RootQuotaName)
 	quotaManager.setScaleMinQuotaEnabled(true)
 	return quotaManager
@@ -137,7 +138,7 @@ func (gqm *GroupQuotaManager) recursiveUpdateGroupTreeWithDeltaRequest(deltaReq 
 		curQuotaInfo := curToAllParInfos[i]
 		oldSubLimitReq := curQuotaInfo.getLimitRequestNoLock()
 		curQuotaInfo.addRequestNonNegativeNoLock(deltaReq)
-		if curQuotaInfo.Name == extension.SystemQuotaName || curQuotaInfo.Name == extension.DefaultQuotaName {
+		if curQuotaInfo.Name == extension.RootQuotaName {
 			return
 		}
 		newSubLimitReq := curQuotaInfo.getLimitRequestNoLock()
@@ -188,6 +189,10 @@ func (gqm *GroupQuotaManager) RefreshRuntimeNoLock(quotaName string) v1.Resource
 		return nil
 	}
 
+	if quotaName == extension.RootQuotaName {
+		return gqm.totalResourceExceptSystemAndDefaultUsed.DeepCopy()
+	}
+
 	if quotaName == extension.SystemQuotaName || quotaName == extension.DefaultQuotaName {
 		return quotaInfo.getMax()
 	}
@@ -199,6 +204,9 @@ func (gqm *GroupQuotaManager) RefreshRuntimeNoLock(quotaName string) v1.Resource
 	totalRes := gqm.totalResourceExceptSystemAndDefaultUsed.DeepCopy()
 	for i := len(curToAllParInfos) - 1; i >= 0; i-- {
 		quotaInfo = curToAllParInfos[i]
+		if quotaInfo.Name == extension.RootQuotaName {
+			continue
+		}
 		parRuntimeQuotaCalculator := gqm.getRuntimeQuotaCalculatorByNameNoLock(quotaInfo.ParentName)
 		if parRuntimeQuotaCalculator == nil {
 			klog.Errorf("treeWrapper not exist! parentQuotaName:%v", quotaInfo.ParentName)
@@ -254,7 +262,7 @@ func (gqm *GroupQuotaManager) getCurToAllParentGroupQuotaInfoNoLock(quotaName st
 
 	for true {
 		curToAllParInfos = append(curToAllParInfos, quotaInfo)
-		if quotaInfo.ParentName == extension.RootQuotaName {
+		if quotaInfo.Name == extension.RootQuotaName {
 			break
 		}
 
@@ -369,6 +377,7 @@ func (gqm *GroupQuotaManager) resetAllGroupQuotaNoLock() {
 	childRequestMap, childUsedMap := make(quotaResMapType), make(quotaResMapType)
 	for quotaName, topoNode := range gqm.quotaTopoNodeMap {
 		if quotaName == extension.RootQuotaName {
+			gqm.resetRootQuotaUsedAndRequest()
 			continue
 		}
 		topoNode.quotaInfo.lock.Lock()
@@ -693,4 +702,16 @@ func getPodName(oldPod, newPod *v1.Pod) string {
 		return newPod.Name
 	}
 	return ""
+}
+
+func (gqm *GroupQuotaManager) resetRootQuotaUsedAndRequest() {
+	rootQuotaInfo := gqm.getQuotaInfoByNameNoLock(extension.RootQuotaName)
+	rootQuotaInfo.lock.Lock()
+	defer rootQuotaInfo.lock.Unlock()
+
+	systemQuotaInfo := gqm.getQuotaInfoByNameNoLock(extension.SystemQuotaName)
+	defaultQuotaInfo := gqm.getQuotaInfoByNameNoLock(extension.DefaultQuotaName)
+
+	rootQuotaInfo.CalculateInfo.Used = quotav1.Add(systemQuotaInfo.GetUsed(), defaultQuotaInfo.GetUsed())
+	rootQuotaInfo.CalculateInfo.Request = quotav1.Add(systemQuotaInfo.GetRequest(), defaultQuotaInfo.GetRequest())
 }
