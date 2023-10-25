@@ -226,11 +226,19 @@ func (h *PodMutatingHandler) mutatePodResourceSpec(pod *corev1.Pod) error {
 	for _, containers := range [][]corev1.Container{pod.Spec.InitContainers, pod.Spec.Containers} {
 		for i := range containers {
 			container := &containers[i]
-			replaceAndEraseResource(priorityClass, container.Resources.Requests, corev1.ResourceCPU)
-			replaceAndEraseResource(priorityClass, container.Resources.Requests, corev1.ResourceMemory)
+			addExtendedResource(priorityClass, container.Resources.Requests, corev1.ResourceCPU)
+			addExtendedResource(priorityClass, container.Resources.Requests, corev1.ResourceMemory)
 
-			replaceAndEraseResource(priorityClass, container.Resources.Limits, corev1.ResourceCPU)
-			replaceAndEraseResource(priorityClass, container.Resources.Limits, corev1.ResourceMemory)
+			addExtendedResource(priorityClass, container.Resources.Limits, corev1.ResourceCPU)
+			addExtendedResource(priorityClass, container.Resources.Limits, corev1.ResourceMemory)
+
+			switch priorityClass {
+			case extension.PriorityMid:
+				setZeroResourceQuantity(container.Resources.Requests, corev1.ResourceCPU, corev1.ResourceMemory)
+			case extension.PriorityBatch:
+				eraseResource(container.Resources.Requests, corev1.ResourceCPU, corev1.ResourceMemory)
+				eraseResource(container.Resources.Limits, corev1.ResourceCPU, corev1.ResourceMemory)
+			}
 
 			restrictResourceRequestAndLimit(priorityClass, &container.Resources, corev1.ResourceCPU)
 			restrictResourceRequestAndLimit(priorityClass, &container.Resources, corev1.ResourceMemory)
@@ -238,13 +246,14 @@ func (h *PodMutatingHandler) mutatePodResourceSpec(pod *corev1.Pod) error {
 	}
 
 	if pod.Spec.Overhead != nil {
-		replaceAndEraseResource(priorityClass, pod.Spec.Overhead, corev1.ResourceCPU)
-		replaceAndEraseResource(priorityClass, pod.Spec.Overhead, corev1.ResourceMemory)
+		addExtendedResource(priorityClass, pod.Spec.Overhead, corev1.ResourceCPU)
+		addExtendedResource(priorityClass, pod.Spec.Overhead, corev1.ResourceMemory)
+		eraseResource(pod.Spec.Overhead, corev1.ResourceCPU, corev1.ResourceMemory)
 	}
 	return nil
 }
 
-func replaceAndEraseResource(priorityClass extension.PriorityClass, resourceList corev1.ResourceList, resourceName corev1.ResourceName) {
+func addExtendedResource(priorityClass extension.PriorityClass, resourceList corev1.ResourceList, resourceName corev1.ResourceName) {
 	extendResourceName := extension.ResourceNameMap[priorityClass][resourceName]
 	if extendResourceName == "" {
 		return
@@ -255,7 +264,21 @@ func replaceAndEraseResource(priorityClass extension.PriorityClass, resourceList
 			quantity = *resource.NewQuantity(quantity.MilliValue(), resource.DecimalSI)
 		}
 		resourceList[extendResourceName] = quantity
-		delete(resourceList, resourceName)
+	}
+}
+
+func eraseResource(resourceList corev1.ResourceList, resourceNames ...corev1.ResourceName) {
+	for _, name := range resourceNames {
+		delete(resourceList, name)
+	}
+}
+
+func setZeroResourceQuantity(resourceList corev1.ResourceList, resourceNames ...corev1.ResourceName) {
+	for _, name := range resourceNames {
+		quantity, ok := resourceList[name]
+		if ok {
+			resourceList[name] = *resource.NewQuantity(0, quantity.Format)
+		}
 	}
 }
 
