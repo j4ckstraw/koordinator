@@ -131,7 +131,7 @@ func (p *Plugin) Calculate(strategy *configuration.ColocationStrategy, node *cor
 		// count the high-priority usage
 		priorityClass := extension.GetPodPriorityClassWithDefault(pod)
 		podRequest := util.GetPodRequest(pod, corev1.ResourceCPU, corev1.ResourceMemory)
-		isPodHighPriority := priorityClass != extension.PriorityBatch && priorityClass != extension.PriorityFree
+		isPodHighPriority := priorityClass != extension.PriorityMid && priorityClass != extension.PriorityBatch && priorityClass != extension.PriorityFree
 		if !isPodHighPriority {
 			continue
 		}

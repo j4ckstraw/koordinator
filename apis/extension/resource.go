@@ -65,8 +65,8 @@ var (
 			corev1.ResourceMemory: BatchMemory,
 		},
 		PriorityMid: {
-			corev1.ResourceCPU:    MidCPU,
-			corev1.ResourceMemory: MidMemory,
+			corev1.ResourceCPU:    BatchCPU,
+			corev1.ResourceMemory: BatchMemory,
 		},
 	}
 )
