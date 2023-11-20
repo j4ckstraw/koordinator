@@ -32,6 +32,7 @@ import (
 	"github.com/koordinator-sh/koordinator/pkg/koordlet/qosmanager/helpers"
 	"github.com/koordinator-sh/koordinator/pkg/koordlet/resourceexecutor"
 	"github.com/koordinator-sh/koordinator/pkg/koordlet/statesinformer"
+	"github.com/koordinator-sh/koordinator/pkg/koordlet/util"
 )
 
 const (
@@ -127,6 +128,9 @@ func (m *memoryEvictor) memoryEvict() {
 	}
 
 	memoryCapacity := node.Status.Capacity.Memory().Value()
+	if features.DefaultKoordletFeatureGate.Enabled(features.CapacityFromCadvisor) {
+		memoryCapacity = int64(util.GetMachineInfo().MemoryCapacity)
+	}
 	if memoryCapacity <= 0 {
 		klog.Warningf("skip memory evict, memory capacity(%v) should greater than 0", memoryCapacity)
 		return
