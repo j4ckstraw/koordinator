@@ -1219,6 +1219,55 @@ func Test_getNodeReservation(t *testing.T) {
 	}
 }
 
+func Test_getRealCPUAndMemoryFromAnnotation(t *testing.T) {
+	type args struct {
+		node *corev1.Node
+	}
+	tests := []struct {
+		name string
+		args args
+		want corev1.ResourceList
+	}{
+		{
+			name: "get capacity from node annotations",
+			args: args{
+				node: &corev1.Node{
+					ObjectMeta: metav1.ObjectMeta{
+						Annotations: map[string]string{"xiaomi.oversale/physical-resource": "cpu=32000m,memory=137438953472"},
+					},
+				},
+			},
+			want: makeResourceList("32", "128Gi"),
+		},
+		{
+			name: "get capacity from node annotations with non integer",
+			args: args{
+				node: &corev1.Node{
+					ObjectMeta: metav1.ObjectMeta{
+						Annotations: map[string]string{"xiaomi.oversale/physical-resource": "cpu=32100m,memory=269906472960"},
+					},
+				},
+			},
+			want: makeResourceList("32100m", "269906472960"),
+		},
+		{
+			name: "get capacity from node annotations backoff",
+			args: args{
+				node: &corev1.Node{
+					Status: makeNodeStat("32", "128Gi"),
+				},
+			},
+			want: makeResourceList("32", "128Gi"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := getRealCPUAndMemoryFromAnnotation(tt.args.node)
+			testingCorrectResourceList(t, &tt.want, &got)
+		})
+	}
+}
+
 func testingCorrectResourceItems(t *testing.T, want, got []framework.ResourceItem) {
 	assert.Equal(t, len(want), len(got))
 	for i := range want {
