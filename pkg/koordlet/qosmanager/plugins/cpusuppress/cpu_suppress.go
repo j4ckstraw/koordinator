@@ -179,6 +179,10 @@ func (r *CPUSuppress) calculateBESuppressCPU(node *corev1.Node, nodeMetric float
 	// NOTE: valid milli-cpu values should not larger than 2^20, so there is no overflow during the calculation
 	nodeBESuppressCPU := resource.NewMilliQuantity(node.Status.Allocatable.Cpu().MilliValue()*beCPUUsedThreshold/100,
 		node.Status.Allocatable.Cpu().Format)
+	if features.DefaultKoordletFeatureGate.Enabled(features.CapacityFromCadvisor) {
+		// TODO: sub reserved resource
+		nodeBESuppressCPU = resource.NewMilliQuantity(int64(koordletutil.GetMachineInfo().NumCores)*1000*beCPUUsedThreshold/100, resource.DecimalSI)
+	}
 	nodeBESuppressCPU.Sub(podNoneBEUsedCPU)
 	nodeBESuppressCPU.Sub(systemUsedCPU)
 
