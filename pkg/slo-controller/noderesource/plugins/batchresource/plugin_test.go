@@ -870,13 +870,13 @@ func TestPluginCalculate(t *testing.T) {
 			want: []framework.ResourceItem{
 				{
 					Name:     extension.BatchCPU,
-					Quantity: resource.NewQuantity(25000, resource.DecimalSI),
-					Message:  "batchAllocatable[CPU(Milli-Core)]:25000 = nodeAllocatable:100000 - nodeReservation:35000 - systemUsage:7000 - podHPUsed:33000",
+					Quantity: resource.NewQuantity(47000, resource.DecimalSI),
+					Message:  "batchAllocatable[CPU(Milli-Core)]:47000 = nodeAllocatable:100000 - nodeReservation:35000 - systemUsage:7000 - podHPUsed:11000",
 				},
 				{
 					Name:     extension.BatchMemory,
-					Quantity: resource.NewScaledQuantity(33, 9),
-					Message:  "batchAllocatable[Mem(GB)]:33 = nodeAllocatable:120 - nodeReservation:42 - systemUsage:12 - podHPUsed:33",
+					Quantity: resource.NewScaledQuantity(55, 9),
+					Message:  "batchAllocatable[Mem(GB)]:55 = nodeAllocatable:120 - nodeReservation:42 - systemUsage:12 - podHPUsed:11",
 				},
 			},
 			wantErr: false,
