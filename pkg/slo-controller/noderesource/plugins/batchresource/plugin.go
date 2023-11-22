@@ -30,9 +30,11 @@ import (
 	"github.com/koordinator-sh/koordinator/apis/configuration"
 	"github.com/koordinator-sh/koordinator/apis/extension"
 	slov1alpha1 "github.com/koordinator-sh/koordinator/apis/slo/v1alpha1"
+	"github.com/koordinator-sh/koordinator/pkg/features"
 	"github.com/koordinator-sh/koordinator/pkg/slo-controller/metrics"
 	"github.com/koordinator-sh/koordinator/pkg/slo-controller/noderesource/framework"
 	"github.com/koordinator-sh/koordinator/pkg/util"
+	utilfeature "github.com/koordinator-sh/koordinator/pkg/util/feature"
 )
 
 const PluginName = "BatchResource"
@@ -150,7 +152,7 @@ func (p *Plugin) Calculate(strategy *configuration.ColocationStrategy, node *cor
 	klog.V(6).InfoS("batch resource got unknown priority pods used", "node", node.Name,
 		"cpu", podUnknownPriorityUsed.Cpu().String(), "memory", podUnknownPriorityUsed.Memory().String())
 
-	nodeAllocatable := getNodeAllocatable(node)
+	nodeAllocatable := getNodeCapacity(node)
 	nodeReservation := getNodeReservation(strategy, node)
 
 	// System.Used = max(Node.Used - Pod(All).Used, Node.Anno.Reserved)
@@ -253,6 +255,14 @@ func prepareNodeForResource(node *corev1.Node, nr *framework.NodeResource, name 
 // getPodMetricUsage gets pod usage from the PodMetricInfo
 func getPodMetricUsage(info *slov1alpha1.PodMetricInfo) corev1.ResourceList {
 	return getResourceListForCPUAndMemory(info.PodUsage.ResourceList)
+}
+
+func getNodeCapacity(node *corev1.Node) corev1.ResourceList {
+	if utilfeature.DefaultFeatureGate.Enabled(features.CapacityFromOversaleAnnotation) {
+		return getRealCPUAndMemoryFromAnnotation(node)
+	}
+
+	return getResourceListForCPUAndMemory(node.Status.Capacity)
 }
 
 // getNodeAllocatable gets node allocatable and filters out non-CPU and non-Mem resources
