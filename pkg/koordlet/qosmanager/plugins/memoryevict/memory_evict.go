@@ -129,7 +129,11 @@ func (m *memoryEvictor) memoryEvict() {
 
 	memoryCapacity := node.Status.Capacity.Memory().Value()
 	if features.DefaultKoordletFeatureGate.Enabled(features.CapacityFromCadvisor) {
-		memoryCapacity = int64(util.GetMachineInfo().MemoryCapacity)
+		if machineInfo, err := util.GetMachineInfo(); err != nil {
+			klog.Warningf("configure featuregate CapacityFromCadvisor, but read machine info failed, use status.Capacity instead")
+		} else {
+			memoryCapacity = int64(machineInfo.MemoryCapacity)
+		}
 	}
 	if memoryCapacity <= 0 {
 		klog.Warningf("skip memory evict, memory capacity(%v) should greater than 0", memoryCapacity)

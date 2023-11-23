@@ -48,8 +48,11 @@ func Test_GetKubeQosRelativePath(t *testing.T) {
 }
 
 func Test_GetMachineInfo(t *testing.T) {
-	minfo0 := GetMachineInfo()
-	minfo1 := GetMachineInfo()
+	minfo0, err1 := GetMachineInfo()
+	minfo1, err2 := GetMachineInfo()
+
+	assert.NoError(t, err1)
+	assert.NoError(t, err2)
 	assert.Equal(t, minfo0.NumCores, minfo1.NumCores)
 	assert.Equal(t, minfo0.MemoryCapacity, minfo1.MemoryCapacity)
 }

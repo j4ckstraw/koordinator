@@ -17,6 +17,7 @@ limitations under the License.
 package util
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -143,28 +144,32 @@ func GetPodCgroupBlkIOAbsoluteDir(qosClass corev1.PodQOSClass) string {
 var machineInfoOnce sync.Once
 var machineInfo *info.MachineInfo
 
-func GetMachineInfo() *info.MachineInfo {
+func GetMachineInfo() (*info.MachineInfo, error) {
 	machineInfoOnce.Do(func() {
 		sysFs := sysfs.NewRealSysFs()
 		context := fs.Context{}
 		if err := container.InitializeFSContext(&context); err != nil {
-			klog.V(6).Infof("initialize fs context err: %v", err)
+			klog.Warningf("initialize fs context err: %v", err)
 			return
 		}
 		fsInfo, err := fs.NewFsInfo(context)
 		if err != nil {
-			klog.V(6).Infof("fsinfo err: %v", err)
+			klog.Warningf("fsinfo err: %v", err)
 			return
 		}
 		inHostNamespace := true
 		mi, err := machine.Info(sysFs, fsInfo, inHostNamespace)
 		if err != nil {
-			klog.V(6).Infof("fsinfo err: %s", err)
+			klog.Warningf("fsinfo err: %s", err)
 			return
 		}
 		machineInfo = mi
-		klog.V(6).Infof("machineInfo initialzed")
+		klog.Infof("machineInfo initialzed success")
 	})
 
-	return machineInfo
+	if machineInfo == nil {
+		return nil, errors.New("get machineInfo failed")
+	}
+
+	return machineInfo, nil
 }

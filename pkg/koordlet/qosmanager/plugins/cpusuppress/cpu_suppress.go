@@ -177,19 +177,23 @@ func (r *CPUSuppress) calculateBESuppressCPU(node *corev1.Node, nodeMetric float
 
 	// suppress(BE) := node.Total * SLOPercent - pod(non-be).Used - max(system.Used, node.anno.reserved)
 	// NOTE: valid milli-cpu values should not larger than 2^20, so there is no overflow during the calculation
-	nodeBESuppressCPU := resource.NewMilliQuantity(node.Status.Allocatable.Cpu().MilliValue()*beCPUUsedThreshold/100,
-		node.Status.Allocatable.Cpu().Format)
+	totalCPU := node.Status.Allocatable.Cpu()
+	nodeBESuppressCPU := resource.NewMilliQuantity(totalCPU.MilliValue()*beCPUUsedThreshold/100, totalCPU.Format)
 	if features.DefaultKoordletFeatureGate.Enabled(features.CapacityFromCadvisor) {
 		// TODO: sub reserved resource
-		nodeBESuppressCPU = resource.NewMilliQuantity(int64(koordletutil.GetMachineInfo().NumCores)*1000*beCPUUsedThreshold/100, resource.DecimalSI)
+		if machineInfo, err := koordletutil.GetMachineInfo(); err != nil {
+			klog.Warningf("configure featuregate CapacityFromCadvisor, but read machine info failed, use status.Allocatable instead")
+		} else {
+			totalCPU = resource.NewQuantity(int64(machineInfo.NumCores), resource.DecimalSI)
+			nodeBESuppressCPU = resource.NewMilliQuantity(totalCPU.MilliValue()*beCPUUsedThreshold/100, resource.DecimalSI)
+		}
 	}
 	nodeBESuppressCPU.Sub(podNoneBEUsedCPU)
 	nodeBESuppressCPU.Sub(systemUsedCPU)
 
 	metrics.RecordBESuppressLSUsedCPU(float64(podNoneBEUsedCPU.MilliValue()) / 1000)
 	klog.Infof("nodeSuppressBE[CPU(Core)]:%v = node.Total:%v * SLOPercent:%v%% - systemUsage:%v - podLSUsed:%v\n",
-		nodeBESuppressCPU.Value(), node.Status.Allocatable.Cpu().Value(), beCPUUsedThreshold, systemUsedCPU.Value(),
-		podNoneBEUsedCPU.Value())
+		nodeBESuppressCPU.Value(), totalCPU.Value(), beCPUUsedThreshold, systemUsedCPU.Value(), podNoneBEUsedCPU.Value())
 
 	return nodeBESuppressCPU
 }
