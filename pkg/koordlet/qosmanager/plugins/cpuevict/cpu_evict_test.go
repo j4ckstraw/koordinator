@@ -365,6 +365,7 @@ func Test_CPUEvict_calculateMilliRelease(t *testing.T) {
 			ctl := gomock.NewController(t)
 			defer ctl.Finish()
 
+			mockBEPod := mockBEPodForCPUEvict(tt.name, int64(tt.avgMetricQueryResult.cpuRequest), 0)
 			mockMetricCache := mock_metriccache.NewMockMetricCache(ctl)
 			mockQuerier := mock_metriccache.NewMockQuerier(ctl)
 			mockMetricCache.EXPECT().Querier(gomock.Any(), gomock.Any()).Return(mockQuerier, nil).AnyTimes()
@@ -375,10 +376,13 @@ func Test_CPUEvict_calculateMilliRelease(t *testing.T) {
 			} else {
 				mockStateInformer.EXPECT().GetNode().Return(testNode).AnyTimes()
 			}
+			mockStateInformer.EXPECT().GetAllPods().Return(testutil.GetPodMetas([]*corev1.Pod{mockBEPod})).AnyTimes()
+
 			metriccache.DefaultAggregateResultFactory = mockResultFactory
 			beUsage := metriccache.MetricPropertiesFunc.NodeBE(string(metriccache.BEResourceCPU), string(metriccache.BEResouceAllocationUsage))
 			beRequest := metriccache.MetricPropertiesFunc.NodeBE(string(metriccache.BEResourceCPU), string(metriccache.BEResouceAllocationRequest))
 			beLimit := metriccache.MetricPropertiesFunc.NodeBE(string(metriccache.BEResourceCPU), string(metriccache.BEResouceAllocationRealLimit))
+			bePodUsage := metriccache.MetricPropertiesFunc.Pod(string(mockBEPod.UID))
 
 			beUsageQueryMeta, err := metriccache.NodeBEMetric.BuildQueryMeta(beUsage)
 			assert.NoError(t, err)
@@ -386,14 +390,16 @@ func Test_CPUEvict_calculateMilliRelease(t *testing.T) {
 			assert.NoError(t, err)
 			beLimitQueryMeta, err := metriccache.NodeBEMetric.BuildQueryMeta(beLimit)
 			assert.NoError(t, err)
+			bePodUsageQueryMeta, err := metriccache.PodCPUUsageMetric.BuildQueryMeta(bePodUsage)
+			assert.NoError(t, err)
 
 			// mockMetricCache.EXPECT().Querier(gomock.Any(), gomock.Any()).Return(mockQuerier, nil).AnyTimes()
 			result := buildMockQueryResultAndCount(ctl, mockQuerier, mockResultFactory, beUsageQueryMeta)
-			result.EXPECT().Value(metriccache.AggregationTypeAVG).Return(tt.avgMetricQueryResult.cpuUsed, nil).Times(1)
-			result.EXPECT().Count().Return(tt.avgMetricQueryResult.count).Times(1)
+			result.EXPECT().Value(metriccache.AggregationTypeAVG).Return(tt.avgMetricQueryResult.cpuUsed, nil).AnyTimes()
+			result.EXPECT().Count().Return(tt.avgMetricQueryResult.count).AnyTimes()
 			if tt.avgMetricQueryResult.count >= 59 && tt.currentMetricQueryResult.count > 0 {
-				result.EXPECT().Value(metriccache.AggregationTypeLast).Return(tt.currentMetricQueryResult.cpuUsed, nil).Times(1)
-				result.EXPECT().Count().Return(tt.currentMetricQueryResult.count).Times(1)
+				result.EXPECT().Value(metriccache.AggregationTypeLast).Return(tt.currentMetricQueryResult.cpuUsed, nil).AnyTimes()
+				result.EXPECT().Count().Return(tt.currentMetricQueryResult.count).AnyTimes()
 			}
 			result = buildMockQueryResultAndCount(ctl, mockQuerier, mockResultFactory, beRequestQueryMeta)
 			result.EXPECT().Value(metriccache.AggregationTypeAVG).Return(tt.avgMetricQueryResult.cpuRequest, nil).Times(1)
@@ -408,6 +414,13 @@ func Test_CPUEvict_calculateMilliRelease(t *testing.T) {
 			if tt.avgMetricQueryResult.count >= 59 && tt.currentMetricQueryResult.count > 0 {
 				result.EXPECT().Value(metriccache.AggregationTypeLast).Return(tt.currentMetricQueryResult.cpuRealLimit, nil).Times(1)
 				result.EXPECT().Count().Return(tt.currentMetricQueryResult.count).Times(1)
+			}
+			result = buildMockQueryResultAndCount(ctl, mockQuerier, mockResultFactory, bePodUsageQueryMeta)
+			result.EXPECT().Value(metriccache.AggregationTypeAVG).Return(tt.avgMetricQueryResult.cpuUsed/1000, nil).AnyTimes()
+			result.EXPECT().Count().Return(tt.avgMetricQueryResult.count).AnyTimes()
+			if tt.avgMetricQueryResult.count >= 59 && tt.currentMetricQueryResult.count > 0 {
+				result.EXPECT().Value(metriccache.AggregationTypeLast).Return(tt.currentMetricQueryResult.cpuUsed/1000, nil).AnyTimes()
+				result.EXPECT().Count().Return(tt.currentMetricQueryResult.count).AnyTimes()
 			}
 			c := cpuEvictor{
 				statesInformer:        mockStateInformer,

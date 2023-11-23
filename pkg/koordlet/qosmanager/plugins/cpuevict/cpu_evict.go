@@ -138,11 +138,11 @@ func (c *cpuEvictor) calculateMilliRelease(thresholdConfig *slov1alpha1.Resource
 		return 0
 	}
 	// BECPUUsage
-	avgBECPUMilliUsage, count01 := getBECPUMetric(metriccache.BEResouceAllocationUsage, querier, queryparam.Aggregate)
+	avgBECPUMilliUsage := c.getBEMilliUsage(*queryparam)
 	// BECPURequest
-	avgBECPUMilliRequest, count02 := getBECPUMetric(metriccache.BEResouceAllocationRequest, querier, queryparam.Aggregate)
+	avgBECPUMilliRequest, count01 := getBECPUMetric(metriccache.BEResouceAllocationRequest, querier, queryparam.Aggregate)
 	// BECPULimit
-	avgBECPUMilliRealLimit, count03 := getBECPUMetric(metriccache.BEResouceAllocationRealLimit, querier, queryparam.Aggregate)
+	avgBECPUMilliRealLimit, count02 := getBECPUMetric(metriccache.BEResouceAllocationRealLimit, querier, queryparam.Aggregate)
 
 	// CPU Satisfaction considers the allocatable when policy=evictByAllocatable.
 	avgBECPUMilliLimit := avgBECPUMilliRealLimit
@@ -152,7 +152,7 @@ func (c *cpuEvictor) calculateMilliRelease(thresholdConfig *slov1alpha1.Resource
 	}
 
 	// get min count
-	count := minInt64(count01, count02, count03)
+	count := minInt64(count01, count02)
 
 	if !isAvgQueryResultValid(windowSeconds, int64(c.metricCollectInterval.Seconds()), count) {
 		return 0
@@ -179,7 +179,7 @@ func (c *cpuEvictor) calculateMilliRelease(thresholdConfig *slov1alpha1.Resource
 		return 0
 	}
 	// BECPUUsage
-	currentBECPUMilliUsage, _ := getBECPUMetric(metriccache.BEResouceAllocationUsage, querier, queryparam.Aggregate)
+	currentBECPUMilliUsage := c.getBEMilliUsage(*queryparam)
 	// BECPURequest
 	currentBECPUMilliRequest, _ := getBECPUMetric(metriccache.BEResouceAllocationRequest, querier, queryparam.Aggregate)
 	// BECPULimit
@@ -357,6 +357,24 @@ func (c *cpuEvictor) getPodEvictInfoAndSort() []*podEvictCPUInfo {
 		return *bePodInfos[i].pod.Spec.Priority < *bePodInfos[j].pod.Spec.Priority
 	})
 	return bePodInfos
+}
+
+func (c *cpuEvictor) getBEMilliUsage(queryParam metriccache.QueryParam) float64 {
+	podMetricMap := helpers.CollectAllPodMetrics(c.statesInformer, c.metricCache, queryParam, metriccache.PodCPUUsageMetric)
+
+	usageTotal := float64(0)
+	for _, podMeta := range c.statesInformer.GetAllPods() {
+		pod := podMeta.Pod
+		if apiext.GetPodQoSClassRaw(pod) == apiext.QoSBE {
+			podMetric, exist := podMetricMap[string(pod.UID)]
+			if !exist {
+				klog.Warningf("failed to collect cpu usage metric for pod: %s", util.GetPodKey(pod))
+				continue
+			}
+			usageTotal += podMetric
+		}
+	}
+	return usageTotal * 1000
 }
 
 func (c *cpuEvictor) getBEMilliAllocatable() float64 {
