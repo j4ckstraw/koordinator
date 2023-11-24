@@ -114,6 +114,12 @@ const (
 	//
 	// BlkIOReconcile enables block I/O QoS feature of koordlet.
 	BlkIOReconcile featuregate.Feature = "BlkIOReconcile"
+
+	// owner: @j4ckstraw
+	// alpha: v1.4
+	//
+	// CapacityFromCadvisor enables read real capacity from cadvisor of koordlet
+	CapacityFromCadvisor featuregate.Feature = "CapacityFromCadvisor"
 )
 
 func init() {
@@ -139,6 +145,7 @@ var (
 		CPICollector:           {Default: false, PreRelease: featuregate.Alpha},
 		PSICollector:           {Default: false, PreRelease: featuregate.Alpha},
 		BlkIOReconcile:         {Default: false, PreRelease: featuregate.Alpha},
+		CapacityFromCadvisor:   {Default: false, PreRelease: featuregate.Alpha},
 	}
 )
 

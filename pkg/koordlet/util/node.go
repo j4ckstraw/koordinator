@@ -17,16 +17,22 @@ limitations under the License.
 package util
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/klog/v2"
-
+	"github.com/google/cadvisor/container"
+	"github.com/google/cadvisor/fs"
+	info "github.com/google/cadvisor/info/v1"
+	"github.com/google/cadvisor/machine"
+	"github.com/google/cadvisor/utils/sysfs"
 	"github.com/koordinator-sh/koordinator/pkg/koordlet/resourceexecutor"
 	"github.com/koordinator-sh/koordinator/pkg/koordlet/util/system"
 	"github.com/koordinator-sh/koordinator/pkg/util/cpuset"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/klog/v2"
 )
 
 const (
@@ -132,4 +138,38 @@ func GetCgroupRootBlkIOAbsoluteDir() string {
 func GetPodCgroupBlkIOAbsoluteDir(qosClass corev1.PodQOSClass) string {
 	podCgroupParentDir := GetPodQoSRelativePath(qosClass)
 	return filepath.Join(GetCgroupRootBlkIOAbsoluteDir(), podCgroupParentDir)
+}
+
+// must be global variables
+var machineInfoOnce sync.Once
+var machineInfo *info.MachineInfo
+
+func GetMachineInfo() (*info.MachineInfo, error) {
+	machineInfoOnce.Do(func() {
+		sysFs := sysfs.NewRealSysFs()
+		context := fs.Context{}
+		if err := container.InitializeFSContext(&context); err != nil {
+			klog.Warningf("initialize fs context err: %v", err)
+			return
+		}
+		fsInfo, err := fs.NewFsInfo(context)
+		if err != nil {
+			klog.Warningf("fsinfo err: %v", err)
+			return
+		}
+		inHostNamespace := true
+		mi, err := machine.Info(sysFs, fsInfo, inHostNamespace)
+		if err != nil {
+			klog.Warningf("fsinfo err: %s", err)
+			return
+		}
+		machineInfo = mi
+		klog.Infof("machineInfo initialzed success")
+	})
+
+	if machineInfo == nil {
+		return nil, errors.New("get machineInfo failed")
+	}
+
+	return machineInfo, nil
 }

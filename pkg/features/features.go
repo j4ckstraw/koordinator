@@ -47,6 +47,9 @@ const (
 
 	// WebhookFramework enables webhook framework
 	WebhookFramework featuregate.Feature = "WebhookFramework"
+
+	// CapacityFromOversaleAnnotation enables get capacity from oversale annotation
+	CapacityFromOversaleAnnotation featuregate.Feature = "CapacityFromOversaleAnnotation"
 )
 
 var defaultFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
@@ -58,6 +61,7 @@ var defaultFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
 	ConfigMapValidatingWebhook:             {Default: false, PreRelease: featuregate.Alpha},
 	WebhookFramework:                       {Default: true, PreRelease: featuregate.Beta},
 	ColocationProfileSkipMutatingResources: {Default: false, PreRelease: featuregate.Alpha},
+	CapacityFromOversaleAnnotation:         {Default: false, PreRelease: featuregate.Alpha},
 }
 
 const (

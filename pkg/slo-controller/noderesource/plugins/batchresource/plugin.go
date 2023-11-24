@@ -18,6 +18,7 @@ package batchresource
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -29,9 +30,11 @@ import (
 	"github.com/koordinator-sh/koordinator/apis/configuration"
 	"github.com/koordinator-sh/koordinator/apis/extension"
 	slov1alpha1 "github.com/koordinator-sh/koordinator/apis/slo/v1alpha1"
+	"github.com/koordinator-sh/koordinator/pkg/features"
 	"github.com/koordinator-sh/koordinator/pkg/slo-controller/metrics"
 	"github.com/koordinator-sh/koordinator/pkg/slo-controller/noderesource/framework"
 	"github.com/koordinator-sh/koordinator/pkg/util"
+	utilfeature "github.com/koordinator-sh/koordinator/pkg/util/feature"
 )
 
 const PluginName = "BatchResource"
@@ -149,7 +152,7 @@ func (p *Plugin) Calculate(strategy *configuration.ColocationStrategy, node *cor
 	klog.V(6).InfoS("batch resource got unknown priority pods used", "node", node.Name,
 		"cpu", podUnknownPriorityUsed.Cpu().String(), "memory", podUnknownPriorityUsed.Memory().String())
 
-	nodeAllocatable := getNodeAllocatable(node)
+	nodeAllocatable := getNodeCapacity(node)
 	nodeReservation := getNodeReservation(strategy, node)
 
 	// System.Used = max(Node.Used - Pod(All).Used, Node.Anno.Reserved)
@@ -254,8 +257,56 @@ func getPodMetricUsage(info *slov1alpha1.PodMetricInfo) corev1.ResourceList {
 	return getResourceListForCPUAndMemory(info.PodUsage.ResourceList)
 }
 
+func getNodeCapacity(node *corev1.Node) corev1.ResourceList {
+	if utilfeature.DefaultFeatureGate.Enabled(features.CapacityFromOversaleAnnotation) {
+		return getRealCPUAndMemoryFromAnnotation(node)
+	}
+
+	return getResourceListForCPUAndMemory(node.Status.Capacity)
+}
+
 // getNodeAllocatable gets node allocatable and filters out non-CPU and non-Mem resources
 func getNodeAllocatable(node *corev1.Node) corev1.ResourceList {
+	return getResourceListForCPUAndMemory(node.Status.Allocatable)
+}
+
+const oversaleKey = "xiaomi.oversale/physical-resource"
+
+// for xiaomi oversale only
+// if oversale component installed, annotation will be added.
+// xiaomi.oversale/physical-resource: cpu=32000m,memory=269906472960
+func getRealCPUAndMemoryFromAnnotation(node *corev1.Node) corev1.ResourceList {
+	parseOversaleAnnotation := func(v string) corev1.ResourceList {
+		result := corev1.ResourceList{}
+		kvs := strings.Split(v, ",")
+		for _, kv := range kvs {
+			kv = strings.TrimSpace(kv)
+			s := strings.SplitN(kv, "=", 2)
+			k, v := s[0], s[1]
+			if k == "cpu" {
+				cpu, err := resource.ParseQuantity(v)
+				if err != nil {
+					klog.V(2).Infof("parse oversale cpu error: %v, value: %v", err, v)
+				}
+				result[corev1.ResourceCPU] = cpu
+			} else if k == "memory" {
+				memory, err := resource.ParseQuantity(v)
+				if err != nil {
+					klog.V(2).Infof("parse oversale memory error: %v, value: %v", err, v)
+				}
+				result[corev1.ResourceMemory] = memory
+			} else {
+				klog.V(4).Infof("not support key: %s, value: %s", k, v)
+			}
+		}
+		return result
+	}
+
+	if value, exist := node.Annotations[oversaleKey]; exist {
+		return parseOversaleAnnotation(value)
+	}
+
+	// backoff allocatable
 	return getResourceListForCPUAndMemory(node.Status.Allocatable)
 }
 
