@@ -172,24 +172,26 @@ func (m *memoryEvictor) killAndEvictBEPods(node *corev1.Node, podMetrics map[str
 	bePodInfos := m.getSortedBEPodInfos(podMetrics)
 	message := fmt.Sprintf("killAndEvictBEPods for node, need to release memory: %v", memoryNeedRelease)
 	memoryReleased := int64(0)
-
-	var killedPods []*corev1.Pod
+	hasKillPods := false
 	for _, bePod := range bePodInfos {
 		if memoryReleased >= memoryNeedRelease {
 			break
 		}
 
-		killMsg := fmt.Sprintf("%v, kill pod: %v", message, bePod.pod.Name)
-		helpers.KillContainers(bePod.pod, killMsg)
-		killedPods = append(killedPods, bePod.pod)
-		if bePod.memUsed != 0 {
-			memoryReleased += int64(bePod.memUsed)
+		ok := m.evictor.EvictPodIfNotEvicted(bePod.pod, node, resourceexecutor.EvictPodByNodeMemoryUsage, message)
+		if ok {
+			killMsg := fmt.Sprintf("%v, kill pod: %v", message, bePod.pod.Name)
+			helpers.KillContainers(bePod.pod, killMsg)
+			hasKillPods = true
+			if bePod.memUsed != 0 {
+				memoryReleased += int64(bePod.memUsed)
+			}
 		}
 	}
+	if hasKillPods {
+		m.lastEvictTime = time.Now()
+	}
 
-	m.evictor.EvictPodsIfNotEvicted(killedPods, node, resourceexecutor.EvictPodByNodeMemoryUsage, message)
-
-	m.lastEvictTime = time.Now()
 	klog.Infof("killAndEvictBEPods completed, memoryNeedRelease(%v) memoryReleased(%v)", memoryNeedRelease, memoryReleased)
 }
 
