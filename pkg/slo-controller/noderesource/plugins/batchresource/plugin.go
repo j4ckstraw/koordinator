@@ -303,7 +303,14 @@ func getRealCPUAndMemoryFromAnnotation(node *corev1.Node) corev1.ResourceList {
 	}
 
 	if value, exist := node.Annotations[oversaleKey]; exist {
-		return parseOversaleAnnotation(value)
+		result := parseOversaleAnnotation(value)
+
+		if result[corev1.ResourceCPU].IsZero() || result[corev1.ResourceMemory].IsZero() {
+			klog.Warning("read from annotation `xiaomi.oversale/physical-resource` successful, but it's zero, fallback to allocatable")
+			return getResourceListForCPUAndMemory(node.Status.Allocatable)
+		}
+
+		return result
 	}
 
 	// backoff allocatable
