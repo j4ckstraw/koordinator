@@ -1251,6 +1251,30 @@ func Test_getRealCPUAndMemoryFromAnnotation(t *testing.T) {
 			want: makeResourceList("32100m", "269906472960"),
 		},
 		{
+			name: "get capacity from node annotations but get zero",
+			args: args{
+				node: &corev1.Node{
+					ObjectMeta: metav1.ObjectMeta{
+						Annotations: map[string]string{"xiaomi.oversale/physical-resource": "cpu=0m,memory=0"},
+					},
+					Status: makeNodeStat("32", "128Gi"),
+				},
+			},
+			want: makeResourceList("32000m", "128Gi"),
+		},
+		{
+			name: "get capacity from node annotations but get one zero",
+			args: args{
+				node: &corev1.Node{
+					ObjectMeta: metav1.ObjectMeta{
+						Annotations: map[string]string{"xiaomi.oversale/physical-resource": "cpu=0m,memory=269906472960"},
+					},
+					Status: makeNodeStat("32", "128Gi"),
+				},
+			},
+			want: makeResourceList("32000m", "128Gi"),
+		},
+		{
 			name: "get capacity from node annotations backoff",
 			args: args{
 				node: &corev1.Node{
