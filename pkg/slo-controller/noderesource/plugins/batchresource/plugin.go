@@ -152,7 +152,7 @@ func (p *Plugin) Calculate(strategy *configuration.ColocationStrategy, node *cor
 	klog.V(6).InfoS("batch resource got unknown priority pods used", "node", node.Name,
 		"cpu", podUnknownPriorityUsed.Cpu().String(), "memory", podUnknownPriorityUsed.Memory().String())
 
-	nodeAllocatable := getNodeCapacity(node)
+	nodeAllocatable := getNodeAllocatable(node)
 	nodeReservation := getNodeReservation(strategy, node)
 
 	// System.Used = max(Node.Used - Pod(All).Used, Node.Anno.Reserved)
@@ -257,16 +257,13 @@ func getPodMetricUsage(info *slov1alpha1.PodMetricInfo) corev1.ResourceList {
 	return getResourceListForCPUAndMemory(info.PodUsage.ResourceList)
 }
 
-func getNodeCapacity(node *corev1.Node) corev1.ResourceList {
+// getNodeAllocatable gets node allocatable and filters out non-CPU and non-Mem resources
+func getNodeAllocatable(node *corev1.Node) corev1.ResourceList {
 	if utilfeature.DefaultFeatureGate.Enabled(features.CapacityFromOversaleAnnotation) {
 		return getRealCPUAndMemoryFromAnnotation(node)
 	}
 
-	return getResourceListForCPUAndMemory(node.Status.Capacity)
-}
-
-// getNodeAllocatable gets node allocatable and filters out non-CPU and non-Mem resources
-func getNodeAllocatable(node *corev1.Node) corev1.ResourceList {
+	// note: we assume that allocatable is approximately equal to capacity
 	return getResourceListForCPUAndMemory(node.Status.Allocatable)
 }
 
