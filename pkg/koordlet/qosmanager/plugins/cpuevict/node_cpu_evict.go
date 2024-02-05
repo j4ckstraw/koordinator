@@ -90,6 +90,14 @@ func (c *cpuEvictor) evictByNodeUtilization(node *corev1.Node, thresholdConfig *
 }
 
 func (c *cpuEvictor) calculateMilliReleaseByNodeUtilization(thresholdConfig *slov1alpha1.ResourceThresholdStrategy, windowSeconds int64) int64 {
+	// get real node cpu capacity
+	info, err := koordletutil.GetMachineInfo()
+	if err != nil {
+		klog.Error("get machine info error: %v", err)
+		return 0
+	}
+	realCapacity := float64(info.NumCores) * 1000
+
 	// get node cpu usage
 	queryParam := helpers.GenerateQueryParamsAvg(windowSeconds)
 	queryMeta, err := metriccache.NodeCPUUsageMetric.BuildQueryMeta(nil)
@@ -108,14 +116,6 @@ func (c *cpuEvictor) calculateMilliReleaseByNodeUtilization(thresholdConfig *slo
 		return 0
 	}
 	cpuUsage = cpuUsage * 1000
-
-	// get real node cpu capacity
-	info, err := koordletutil.GetMachineInfo()
-	if err != nil {
-		klog.Error("get machine info error: %v", err)
-		return 0
-	}
-	realCapacity := float64(info.NumCores) * 1000
 
 	// check threshold
 	if !isNodeCPUUsageHighEnough(cpuUsage, realCapacity, thresholdConfig.CPUEvictThresholdPercent) {
