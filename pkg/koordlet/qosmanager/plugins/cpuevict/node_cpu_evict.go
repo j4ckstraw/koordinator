@@ -138,7 +138,7 @@ func (c *cpuEvictor) calculateMilliReleaseByNodeUtilization(thresholdConfig *slo
 
 // copy from killAndEvictBEPodsRelease add return value
 func (c *cpuEvictor) killAndEvictBEPodsReleaseX(node *corev1.Node, bePodInfos []*podEvictCPUInfo, cpuNeedMilliRelease int64) bool {
-	message := fmt.Sprintf("killAndEvictBEPodsRelease for node(%s), need release milli CPU: %v",
+	message := fmt.Sprintf("killAndEvictBEPodsReleaseX for node(%s), need release milli CPU: %v",
 		node.Name, cpuNeedMilliRelease)
 
 	cpuMilliReleased := int64(0)
@@ -148,13 +148,13 @@ func (c *cpuEvictor) killAndEvictBEPodsReleaseX(node *corev1.Node, bePodInfos []
 			break
 		}
 
-		ok := c.evictor.EvictPodIfNotEvicted(bePod.pod, node, resourceexecutor.EvictPodByBECPUSatisfaction, message)
+		ok := c.evictor.EvictPodIfNotEvicted(bePod.pod, node, resourceexecutor.EvictPodByNodeCPUUtilization, message)
 		if ok {
 			podKillMsg := fmt.Sprintf("%s, kill pod: %s", message, util.GetPodKey(bePod.pod))
 			helpers.KillContainers(bePod.pod, podKillMsg)
 
 			cpuMilliReleased = cpuMilliReleased + bePod.milliRequest
-			klog.V(5).Infof("cpuEvict pick pod %s to evict", util.GetPodKey(bePod.pod))
+			klog.V(5).Infof("node cpu evict pick pod %s to evict", util.GetPodKey(bePod.pod))
 			hasKillPods = true
 		}
 	}
@@ -162,7 +162,7 @@ func (c *cpuEvictor) killAndEvictBEPodsReleaseX(node *corev1.Node, bePodInfos []
 	if hasKillPods {
 		c.lastEvictTime = time.Now()
 	}
-	klog.V(5).Infof("killAndEvictBEPodsRelease finished! cpuNeedMilliRelease(%d) cpuMilliReleased(%d)",
+	klog.V(5).Infof("killAndEvictBEPodsReleaseX finished! cpuNeedMilliRelease(%d) cpuMilliReleased(%d)",
 		cpuNeedMilliRelease, cpuMilliReleased)
 	return hasKillPods
 }
@@ -271,7 +271,7 @@ func calculateResourceMilliToReleaseByNodeUtilization(usage, capacity float64, t
 func isNodeCPUEvictionConfigValid(thresholdConfig *slov1alpha1.ResourceThresholdStrategy) bool {
 	lowPercent := thresholdConfig.CPUEvictLowerPercent
 	threshold := thresholdConfig.CPUEvictThresholdPercent
-	if threshold == nil || *threshold <= 0 {
+	if threshold == nil || *threshold <= 0 || *threshold >= 100 {
 		klog.V(4).Infof("cpuEvict by node utilization skipped, CPUEvictThresholdPercent not config or less than 0")
 		return false
 	}
