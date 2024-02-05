@@ -227,6 +227,15 @@ type ResourceThresholdStrategy struct {
 	// CPUSuppressPolicy
 	CPUSuppressPolicy CPUSuppressPolicy `json:"cpuSuppressPolicy,omitempty"`
 
+	// upper: cpu evict threshold percentage (0,100), default = 65
+	// +kubebuilder:validation:Maximum=100
+	// +kubebuilder:validation:Minimum=0
+	CPUEvictThresholdPercent *int64 `json:"cpuEvictThresholdPercent,omitempty" validate:"omitempty,min=0,max=100,gtfield=CPUEvictLowerPercent"`
+	// lower: memory release util usage under CPUEvictLowerPercent, default = CPUEvictThresholdPercent - 2
+	// +kubebuilder:validation:Maximum=100
+	// +kubebuilder:validation:Minimum=0
+	CPUEvictLowerPercent *int64 `json:"cpuEvictLowerPercent,omitempty" validate:"omitempty,min=0,max=100,ltfield=CPUEvictThresholdPercent"`
+
 	// upper: memory evict threshold percentage (0,100), default = 70
 	// +kubebuilder:validation:Maximum=100
 	// +kubebuilder:validation:Minimum=0

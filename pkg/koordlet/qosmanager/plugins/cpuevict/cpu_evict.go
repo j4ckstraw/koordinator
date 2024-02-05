@@ -58,6 +58,7 @@ type cpuEvictor struct {
 	metricCache           metriccache.MetricCache
 	evictor               *framework.Evictor
 	lastEvictTime         time.Time
+	onlyEvictByAPI        bool
 }
 
 func New(opt *framework.Options) framework.QOSStrategy {
@@ -68,6 +69,7 @@ func New(opt *framework.Options) framework.QOSStrategy {
 		statesInformer:        opt.StatesInformer,
 		metricCache:           opt.MetricCache,
 		lastEvictTime:         time.Now(),
+		onlyEvictByAPI:        opt.Config.OnlyEvictByAPI,
 	}
 }
 
@@ -80,7 +82,7 @@ func (c *cpuEvictor) Setup(ctx *framework.Context) {
 }
 
 func (c *cpuEvictor) Run(stopCh <-chan struct{}) {
-	go wait.Until(c.cpuEvict, c.evictInterval, stopCh)
+	go wait.Until(c.cpuEvictWrapper, c.evictInterval, stopCh)
 }
 
 type podEvictCPUInfo struct {
@@ -88,6 +90,16 @@ type podEvictCPUInfo struct {
 	milliUsedCores int64
 	cpuUsage       float64 // cpuUsage = milliUsedCores / milliRequest
 	pod            *corev1.Pod
+}
+
+func (c *cpuEvictor) cpuEvictWrapper() {
+	if c.nodeCPUEvict() {
+		klog.Info("node cpu evict success, skip cpu evict")
+		return
+	}
+
+	klog.Info("node cpu evict failed, try cpu evict")
+	c.cpuEvict()
 }
 
 func (c *cpuEvictor) cpuEvict() {
@@ -238,7 +250,8 @@ func isBECPUUsageHighEnough(beCPUMilliUsage, beCPUMilliRealLimit float64, thresh
 			beCPUMilliRealLimit)
 		return false
 	}
-	if beCPUMilliUsage < 1000 {
+	if beCPUMilliRealLimit < 1000 {
+		klog.Warningf("cpuEvict by ResourceSatisfaction: CPURealLimit %v is less than 1 core", beCPUMilliRealLimit)
 		return true
 	}
 	cpuUsage := beCPUMilliUsage / beCPUMilliRealLimit
@@ -298,8 +311,15 @@ func (c *cpuEvictor) killAndEvictBEPodsRelease(node *corev1.Node, bePodInfos []*
 			break
 		}
 
-		ok := c.evictor.EvictPodIfNotEvicted(bePod.pod, node, resourceexecutor.EvictPodByBECPUSatisfaction, message)
-		if ok {
+		if c.onlyEvictByAPI {
+			if c.evictor.EvictPodIfNotEvicted(bePod.pod, node, resourceexecutor.EvictPodByBECPUSatisfaction, message) {
+				cpuMilliReleased = cpuMilliReleased + bePod.milliRequest
+				klog.V(5).Infof("cpuEvict pick pod %s to evict", util.GetPodKey(bePod.pod))
+				hasKillPods = true
+			} else {
+				klog.V(5).Infof("cpuEvict pick pod %s to evict, failed", util.GetPodKey(bePod.pod))
+			}
+		} else {
 			podKillMsg := fmt.Sprintf("%s, kill pod: %s", message, util.GetPodKey(bePod.pod))
 			helpers.KillContainers(bePod.pod, podKillMsg)
 

@@ -32,7 +32,8 @@ import (
 	"github.com/koordinator-sh/koordinator/pkg/koordlet/qosmanager/helpers"
 	"github.com/koordinator-sh/koordinator/pkg/koordlet/resourceexecutor"
 	"github.com/koordinator-sh/koordinator/pkg/koordlet/statesinformer"
-	"github.com/koordinator-sh/koordinator/pkg/koordlet/util"
+	koordletutil "github.com/koordinator-sh/koordinator/pkg/koordlet/util"
+	"github.com/koordinator-sh/koordinator/pkg/util"
 )
 
 const (
@@ -51,6 +52,7 @@ type memoryEvictor struct {
 	metricCache           metriccache.MetricCache
 	evictor               *framework.Evictor
 	lastEvictTime         time.Time
+	onlyEvictByAPI        bool
 }
 
 type podInfo struct {
@@ -65,6 +67,7 @@ func New(opt *framework.Options) framework.QOSStrategy {
 		metricCollectInterval: opt.MetricAdvisorConfig.CollectResUsedInterval,
 		statesInformer:        opt.StatesInformer,
 		metricCache:           opt.MetricCache,
+		onlyEvictByAPI:        opt.Config.OnlyEvictByAPI,
 	}
 }
 
@@ -129,7 +132,7 @@ func (m *memoryEvictor) memoryEvict() {
 
 	memoryCapacity := node.Status.Capacity.Memory().Value()
 	if features.DefaultKoordletFeatureGate.Enabled(features.CapacityFromCadvisor) {
-		if machineInfo, err := util.GetMachineInfo(); err != nil {
+		if machineInfo, err := koordletutil.GetMachineInfo(); err != nil {
 			klog.Warningf("configure featuregate CapacityFromCadvisor, but read machine info failed, use status.Capacity instead")
 		} else {
 			memoryCapacity = int64(machineInfo.MemoryCapacity)
@@ -178,14 +181,24 @@ func (m *memoryEvictor) killAndEvictBEPods(node *corev1.Node, podMetrics map[str
 			break
 		}
 
-		ok := m.evictor.EvictPodIfNotEvicted(bePod.pod, node, resourceexecutor.EvictPodByNodeMemoryUsage, message)
-		if ok {
+		if m.onlyEvictByAPI {
+			if m.evictor.EvictPodIfNotEvicted(bePod.pod, node, resourceexecutor.EvictPodByNodeMemoryUsage, message) {
+				hasKillPods = true
+				if bePod.memUsed != 0 {
+					memoryReleased += int64(bePod.memUsed)
+				}
+				klog.V(5).Infof("memoryEvict pick pod %s to evict", util.GetPodKey(bePod.pod))
+			} else {
+				klog.V(5).Infof("memoryEvict pick pod %s to evict", util.GetPodKey(bePod.pod))
+			}
+		} else {
 			killMsg := fmt.Sprintf("%v, kill pod: %v", message, bePod.pod.Name)
 			helpers.KillContainers(bePod.pod, killMsg)
 			hasKillPods = true
 			if bePod.memUsed != 0 {
 				memoryReleased += int64(bePod.memUsed)
 			}
+			klog.V(5).Infof("memoryEvict pick pod %s to evict", util.GetPodKey(bePod.pod))
 		}
 	}
 	if hasKillPods {
