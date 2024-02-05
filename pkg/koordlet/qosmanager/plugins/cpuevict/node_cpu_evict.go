@@ -127,7 +127,7 @@ func (c *cpuEvictor) calculateMilliReleaseByNodeUtilization(thresholdConfig *slo
 	// calculate eviction
 	milliRelease := calculateResourceMilliToReleaseByNodeUtilization(cpuUsage, realCapacity, thresholdConfig)
 	if milliRelease <= 0 {
-		klog.V(5).Infof("cpuEvict by nodeUtilization skipped, releaseByCurrent: %v", milliRelease)
+		klog.Warningf("cpuEvict by nodeUtilization skipped, releaseByCurrent: %v", milliRelease)
 		return 0
 	}
 
