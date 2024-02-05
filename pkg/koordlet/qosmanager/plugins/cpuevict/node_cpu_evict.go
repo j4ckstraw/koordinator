@@ -136,7 +136,9 @@ func (c *cpuEvictor) calculateMilliReleaseByNodeUtilization(thresholdConfig *slo
 	return milliRelease
 }
 
-// copy from killAndEvictBEPodsRelease add return value
+// copy from killAndEvictBEPodsRelease
+// add return value
+// change milliRequest to milliUsedCores
 func (c *cpuEvictor) killAndEvictBEPodsReleaseX(node *corev1.Node, bePodInfos []*podEvictCPUInfo, cpuNeedMilliRelease int64) bool {
 	message := fmt.Sprintf("killAndEvictBEPodsReleaseX for node(%s), need release milli CPU: %v",
 		node.Name, cpuNeedMilliRelease)
@@ -152,8 +154,8 @@ func (c *cpuEvictor) killAndEvictBEPodsReleaseX(node *corev1.Node, bePodInfos []
 		if ok {
 			podKillMsg := fmt.Sprintf("%s, kill pod: %s", message, util.GetPodKey(bePod.pod))
 			helpers.KillContainers(bePod.pod, podKillMsg)
-
-			cpuMilliReleased = cpuMilliReleased + bePod.milliRequest
+			// add used cores up
+			cpuMilliReleased = cpuMilliReleased + bePod.milliUsedCores
 			klog.V(5).Infof("node cpu evict pick pod %s to evict", util.GetPodKey(bePod.pod))
 			hasKillPods = true
 		}
