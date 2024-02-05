@@ -150,8 +150,16 @@ func (c *cpuEvictor) killAndEvictBEPodsReleaseX(node *corev1.Node, bePodInfos []
 			break
 		}
 
-		ok := c.evictor.EvictPodIfNotEvicted(bePod.pod, node, resourceexecutor.EvictPodByNodeCPUUtilization, message)
-		if ok {
+		if c.onlyEvictByAPI {
+			if c.evictor.EvictPodIfNotEvicted(bePod.pod, node, resourceexecutor.EvictPodByNodeCPUUtilization, message) {
+				// add used cores up
+				cpuMilliReleased = cpuMilliReleased + bePod.milliUsedCores
+				klog.V(5).Infof("node cpu evict pick pod %s to evict", util.GetPodKey(bePod.pod))
+				hasKillPods = true
+			} else {
+				klog.V(5).Infof("node cpu evict pick pod %s to evict, failed", util.GetPodKey(bePod.pod))
+			}
+		} else {
 			podKillMsg := fmt.Sprintf("%s, kill pod: %s", message, util.GetPodKey(bePod.pod))
 			helpers.KillContainers(bePod.pod, podKillMsg)
 			// add used cores up
