@@ -39,7 +39,7 @@ func NewDefaultConfig() *Config {
 		MemoryEvictIntervalSeconds: 1,
 		MemoryEvictCoolTimeSeconds: 4,
 		CPUEvictCoolTimeSeconds:    20,
-		OnlyEvictByAPI:             false,
+		OnlyEvictByAPI:             true,
 		QOSExtensionCfg:            &QOSExtensionConfig{FeatureGates: map[string]bool{}},
 	}
 }
