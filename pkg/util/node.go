@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -135,4 +136,70 @@ func GetNodeAnnoReservedJson(reserved apiext.NodeReservation) string {
 	}
 
 	return result
+}
+
+func GetResourceListForCPUAndMemory(rl corev1.ResourceList) corev1.ResourceList {
+	return quotav1.Mask(rl, []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory})
+}
+
+// for xiaomi oversale only
+// if oversale component installed, annotation will be added.
+// xiaomi.oversale/physical-resource: cpu=32000m,memory=269906472960
+func parseOversaleAnnotation(v string) corev1.ResourceList {
+	result := corev1.ResourceList{}
+	kvs := strings.Split(v, ",")
+	for _, kv := range kvs {
+		kv = strings.TrimSpace(kv)
+		s := strings.Split(kv, "=")
+		if len(s) != 2 {
+			continue
+		}
+		k, v := s[0], s[1]
+		if k == "cpu" {
+			cpu, err := resource.ParseQuantity(v)
+			if err != nil {
+				klog.V(2).Infof("parse oversale cpu error: %v, value: %v", err, v)
+			}
+			result[corev1.ResourceCPU] = cpu
+		} else if k == "memory" {
+			memory, err := resource.ParseQuantity(v)
+			if err != nil {
+				klog.V(2).Infof("parse oversale memory error: %v, value: %v", err, v)
+			}
+			result[corev1.ResourceMemory] = memory
+		} else {
+			klog.V(4).Infof("not support key: %s, value: %s", k, v)
+		}
+	}
+	return result
+}
+
+const oversaleKey = "xiaomi.oversale/physical-resource"
+
+func GetRealCPUAndMemoryFromOversaleAnnotation(node *corev1.Node) (corev1.ResourceList, error) {
+	if value, exist := node.Annotations[oversaleKey]; exist {
+		result := parseOversaleAnnotation(value)
+		cpu, memory := result[corev1.ResourceCPU], result[corev1.ResourceMemory]
+		if cpu.IsZero() || memory.IsZero() {
+			klog.V(6).Infof("read from annotation `xiaomi.oversale/physical-resource` successful, but it's zero, fallback to allocatable")
+			return nil, fmt.Errorf("zero value found from oversale annotation")
+		}
+
+		return result, nil
+	}
+
+	// return nil if not found annotation
+	return nil, fmt.Errorf("annotation: %v not found", oversaleKey)
+}
+func RewriteAllocatable(node *corev1.Node) {
+	result, err := GetRealCPUAndMemoryFromOversaleAnnotation(node)
+	if err != nil {
+		klog.Warning("get real CPU and Memory error: %v, skip rewrite node %v allocatable", err.Error(), node.Name)
+		return
+	}
+
+	for _, resourceName := range []corev1.ResourceName{corev1.ResourceCPU, corev1.ResourceMemory} {
+		klog.V(6).Infof("rewrite node %v resource name %v to %v", node.Name, resourceName, result[resourceName])
+		node.Status.Allocatable[resourceName] = result[resourceName]
+	}
 }

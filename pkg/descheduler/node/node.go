@@ -33,6 +33,7 @@ import (
 
 	podutil "github.com/koordinator-sh/koordinator/pkg/descheduler/pod"
 	"github.com/koordinator-sh/koordinator/pkg/descheduler/utils"
+	"github.com/koordinator-sh/koordinator/pkg/util"
 )
 
 // ReadyNodes returns ready nodes irrespective of whether they are
@@ -71,6 +72,7 @@ func ReadyNodes(ctx context.Context, client clientset.Interface, nodeInformer co
 	for _, node := range nodes {
 		if IsReady(node) {
 			readyNodes = append(readyNodes, node)
+			util.RewriteAllocatable(node)
 		}
 	}
 	return readyNodes, nil

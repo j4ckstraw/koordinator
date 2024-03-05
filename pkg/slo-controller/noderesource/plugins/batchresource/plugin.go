@@ -18,7 +18,6 @@ package batchresource
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -267,51 +266,19 @@ func getNodeAllocatable(node *corev1.Node) corev1.ResourceList {
 	return getResourceListForCPUAndMemory(node.Status.Allocatable)
 }
 
-const oversaleKey = "xiaomi.oversale/physical-resource"
-
 // for xiaomi oversale only
 // if oversale component installed, annotation will be added.
 // xiaomi.oversale/physical-resource: cpu=32000m,memory=269906472960
 func getRealCPUAndMemoryFromAnnotation(node *corev1.Node) corev1.ResourceList {
-	parseOversaleAnnotation := func(v string) corev1.ResourceList {
-		result := corev1.ResourceList{}
-		kvs := strings.Split(v, ",")
-		for _, kv := range kvs {
-			kv = strings.TrimSpace(kv)
-			s := strings.SplitN(kv, "=", 2)
-			k, v := s[0], s[1]
-			if k == "cpu" {
-				cpu, err := resource.ParseQuantity(v)
-				if err != nil {
-					klog.V(2).Infof("parse oversale cpu error: %v, value: %v", err, v)
-				}
-				result[corev1.ResourceCPU] = cpu
-			} else if k == "memory" {
-				memory, err := resource.ParseQuantity(v)
-				if err != nil {
-					klog.V(2).Infof("parse oversale memory error: %v, value: %v", err, v)
-				}
-				result[corev1.ResourceMemory] = memory
-			} else {
-				klog.V(4).Infof("not support key: %s, value: %s", k, v)
-			}
-		}
-		return result
+	result, err := util.GetRealCPUAndMemoryFromOversaleAnnotation(node)
+	if err != nil {
+		klog.Warningf("get real CPU and Memory error: %v", err)
+
+		// backoff allocatable
+		return getResourceListForCPUAndMemory(node.Status.Allocatable)
 	}
 
-	if value, exist := node.Annotations[oversaleKey]; exist {
-		result := parseOversaleAnnotation(value)
-		cpu, memory := result[corev1.ResourceCPU], result[corev1.ResourceMemory]
-		if cpu.IsZero() || memory.IsZero() {
-			klog.Warning("read from annotation `xiaomi.oversale/physical-resource` successful, but it's zero, fallback to allocatable")
-			return getResourceListForCPUAndMemory(node.Status.Allocatable)
-		}
-
-		return result
-	}
-
-	// backoff allocatable
-	return getResourceListForCPUAndMemory(node.Status.Allocatable)
+	return result
 }
 
 // getNodeReservation gets node-level safe-guarding reservation with the node's allocatable

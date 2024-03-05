@@ -18,6 +18,8 @@ package util
 
 import (
 	"encoding/json"
+	"fmt"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"reflect"
 	"testing"
 
@@ -308,4 +310,156 @@ func TestTrimNodeAllocatableByNodeReservation(t *testing.T) {
 			assert.Equal(t, tt.expectedTrimmed, gotTrimmed)
 		})
 	}
+}
+
+func Test_rewriteAllocatable(t *testing.T) {
+	testCases := []struct {
+		name              string
+		node              *corev1.Node
+		expectAllocatable corev1.ResourceList
+	}{
+		{
+			name: "oversale-annotation-not-exist",
+			node: &corev1.Node{
+				Status: corev1.NodeStatus{
+					Allocatable: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("2"),
+						corev1.ResourceMemory: resource.MustParse("2Gi"),
+					},
+				},
+			},
+			expectAllocatable: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("2"),
+				corev1.ResourceMemory: resource.MustParse("2Gi"),
+			},
+		},
+		{
+			name: "oversale-annotation-format-error",
+			node: &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						oversaleKey: "cpu==1,memory=1Gi",
+					},
+				},
+				Status: corev1.NodeStatus{
+					Allocatable: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("2"),
+						corev1.ResourceMemory: resource.MustParse("2Gi"),
+					},
+				},
+			},
+			expectAllocatable: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("2"),
+				corev1.ResourceMemory: resource.MustParse("2Gi"),
+			},
+		},
+		{
+			name: "oversale-annotation-format-error",
+			node: &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						oversaleKey: "mem=1Gi,cpu=1",
+					},
+				},
+				Status: corev1.NodeStatus{
+					Allocatable: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("2"),
+						corev1.ResourceMemory: resource.MustParse("2Gi"),
+					},
+				},
+			},
+			expectAllocatable: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("2"),
+				corev1.ResourceMemory: resource.MustParse("2Gi"),
+			},
+		},
+		{
+			name: "oversale-annotation-format-error",
+			node: &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						oversaleKey: ",memory=1GI,cpu=1",
+					},
+				},
+				Status: corev1.NodeStatus{
+					Allocatable: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("2"),
+						corev1.ResourceMemory: resource.MustParse("2Gi"),
+					},
+				},
+			},
+			expectAllocatable: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("2"),
+				corev1.ResourceMemory: resource.MustParse("2Gi"),
+			},
+		},
+		{
+			name: "oversale-cpu-not-exist",
+			node: &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						oversaleKey: "cpu=1, memory=1081007022080",
+					},
+				},
+				Status: corev1.NodeStatus{
+					Allocatable: corev1.ResourceList{
+						corev1.ResourceMemory: resource.MustParse("233Gi"),
+					},
+				},
+			},
+			expectAllocatable: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("1"),
+				corev1.ResourceMemory: resource.MustParse("1081007022080"),
+			},
+		},
+		{
+			name: "oversale-memory-not-exist",
+			node: &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Annotations: map[string]string{
+						oversaleKey: "memory=1Gi,,,cpu=128000m,,,",
+					},
+				},
+				Status: corev1.NodeStatus{
+					Allocatable: corev1.ResourceList{
+						corev1.ResourceCPU: resource.MustParse("256000m"),
+					},
+				},
+			},
+			expectAllocatable: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("128000m"),
+				corev1.ResourceMemory: resource.MustParse("1Gi"),
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			RewriteAllocatable(tc.node)
+			errs := validateNode(tc.node, tc.expectAllocatable)
+			assert.Nil(t, errs)
+			t.Log(errs)
+			t.Logf("node: %v", tc.node)
+		})
+	}
+}
+
+func validateNode(node *corev1.Node, expect corev1.ResourceList) []error {
+	errs := make([]error, 0)
+
+	if len(node.Status.Allocatable) == 0 {
+		errs = append(errs, fmt.Errorf("node allocatable resources are empty"))
+	}
+	if len(node.Status.Allocatable) != len(expect) {
+		errs = append(errs, fmt.Errorf("unexpected length"))
+		return errs
+	}
+	for k := range expect {
+		if node.Status.Allocatable[k] != expect[k] {
+			errs = append(errs, fmt.Errorf("unexpected value"))
+		}
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return errs
 }
