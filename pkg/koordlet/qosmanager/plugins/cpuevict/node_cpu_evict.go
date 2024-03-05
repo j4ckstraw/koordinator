@@ -132,7 +132,7 @@ func (c *cpuEvictor) calculateMilliReleaseByNodeUtilization(thresholdConfig *slo
 	}
 
 	klog.V(4).Infof("cpuEvict by nodeUtilization start to evict, milliRelease: %v, current status (Usage:%v, Capacity:%v)",
-		cpuUsage, realCapacity)
+		milliRelease, cpuUsage, realCapacity)
 	return milliRelease
 }
 
@@ -255,10 +255,11 @@ func calculateResourceMilliToReleaseByNodeUtilization(usage, capacity float64, t
 	thresholdPercent := thresholdConfig.CPUEvictThresholdPercent
 	lowerPercent := thresholdConfig.CPUEvictLowerPercent
 	if thresholdPercent == nil {
-		*thresholdPercent = defaultNodeCPUUsageThresholdPercent
+		thresholdPercent = pointer.Int64(defaultNodeCPUUsageThresholdPercent)
 	}
+
 	if lowerPercent == nil {
-		*lowerPercent = *thresholdPercent - cpuReleaseBufferPercent
+		lowerPercent = pointer.Int64(*thresholdPercent - cpuReleaseBufferPercent)
 	}
 
 	lower := float64(*lowerPercent) / 100
@@ -279,14 +280,19 @@ func calculateResourceMilliToReleaseByNodeUtilization(usage, capacity float64, t
 }
 
 func isNodeCPUEvictionConfigValid(thresholdConfig *slov1alpha1.ResourceThresholdStrategy) bool {
-	lowPercent := thresholdConfig.CPUEvictLowerPercent
 	threshold := thresholdConfig.CPUEvictThresholdPercent
-	if threshold == nil || *threshold <= 0 || *threshold >= 100 {
-		klog.V(4).Infof("cpuEvict by node utilization skipped, CPUEvictThresholdPercent not config or less than 0")
+	lowPercent := thresholdConfig.CPUEvictLowerPercent
+	if threshold == nil {
+		klog.V(4).Infof("cpuEvict by node utilization skipped, CPUEvictThresholdPercent not config")
 		return false
 	}
 
-	if *lowPercent > *threshold || *lowPercent <= 0 {
+	if *threshold <= 0 || *threshold >= 100 {
+		klog.V(4).Infof("cpuEvict by node utilization skipped, CPUEvictThresholdPercent is not valid! must (0,100)")
+		return false
+	}
+
+	if lowPercent != nil && (*lowPercent > *threshold || *lowPercent <= 0) {
 		klog.V(4).Infof("cpuEvict by node utilization skipped, CPUEvictLowerPercent(%d) is not valid! must (0,%d]", *lowPercent, *threshold)
 		return false
 	}
