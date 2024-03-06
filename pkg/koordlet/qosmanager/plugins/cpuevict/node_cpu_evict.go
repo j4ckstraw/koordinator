@@ -22,6 +22,8 @@ import (
 const (
 	defaultNodeCPUUsageThresholdPercent = 65
 	cpuReleaseBufferPercent             = 2
+
+	defaultScheduler = "koord-scheduler"
 )
 
 // evict pod by node utilization
@@ -75,6 +77,10 @@ func (c *cpuEvictor) evictByNodeUtilization(node *corev1.Node, thresholdConfig *
 	milliRelease := c.calculateMilliReleaseByNodeUtilization(thresholdConfig, windowSeconds)
 	if milliRelease > 0 {
 		podInfos := c.getPodEvictInfoAndSortX(func(pod *corev1.Pod) bool {
+			// we only evict pod managed by koordinator
+			if pod.Spec.SchedulerName != defaultScheduler {
+				return false
+			}
 			// we want to match Mid pod and BE pod
 			priorityClass := apiext.GetPodPriorityClassWithDefault(pod)
 			if priorityClass == apiext.PriorityBatch || priorityClass == apiext.PriorityMid {
