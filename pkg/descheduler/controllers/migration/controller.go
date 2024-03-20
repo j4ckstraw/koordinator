@@ -19,6 +19,7 @@ package migration
 import (
 	"context"
 	"fmt"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strconv"
 	"time"
 
@@ -57,6 +58,9 @@ import (
 const (
 	Name                = names.MigrationController
 	defaultRequeueAfter = 3 * time.Second
+
+	CloneSetEvictLabelKey   = "apps.kruise.io/specified-delete"
+	CloneSetEvictLabelValue = "true"
 )
 
 var (
@@ -266,6 +270,14 @@ func (r *Reconciler) doMigrate(ctx context.Context, job *sev1alpha1.PodMigration
 	if job.Spec.Mode == sev1alpha1.PodMigrationJobModeEvictionDirectly ||
 		(job.Spec.Mode == "" && r.args.DefaultJobMode == string(sev1alpha1.PodMigrationJobModeEvictionDirectly)) {
 		return r.evictPodDirectly(ctx, job)
+	}
+
+	cp, err := r.isCloneSetPod(ctx, job)
+	if err != nil {
+		return reconcile.Result{}, nil
+	}
+	if cp {
+		return r.dealWithCloneSetPod(ctx, job)
 	}
 
 	if job.Spec.ReservationOptions == nil || job.Spec.ReservationOptions.ReservationRef == nil {
@@ -918,6 +930,105 @@ func (r *Reconciler) updateCondition(ctx context.Context, job *sev1alpha1.PodMig
 		return r.Client.Status().Update(ctx, job)
 	}
 	return nil
+}
+
+func (r *Reconciler) isCloneSetPod(ctx context.Context, job *sev1alpha1.PodMigrationJob) (bool, error) {
+	if job.Spec.Mode == sev1alpha1.PodMigrationJobModeCloneSetEvict {
+		return true, nil
+	}
+	if job.Status.Status == string(sev1alpha1.PodMigrationJobConditionEviction) {
+		return false, nil
+	}
+	pod := &corev1.Pod{}
+	podNamespacedName := types.NamespacedName{Namespace: job.Spec.PodRef.Namespace, Name: job.Spec.PodRef.Name}
+	err := r.Client.Get(ctx, podNamespacedName, pod)
+	if err != nil {
+		return false, err
+	}
+	ownerRef := metav1.GetControllerOf(pod)
+	if ownerRef.Kind != "CloneSet" {
+		return false, nil
+	} else {
+		job.Spec.Mode = sev1alpha1.PodMigrationJobModeCloneSetEvict
+		err = r.Client.Update(ctx, job)
+		if err != nil {
+			klog.Errorf("Faild to change job mode to cloneset-evict")
+		}
+		return true, nil
+	}
+}
+
+func (r *Reconciler) dealWithCloneSetPod(ctx context.Context, job *sev1alpha1.PodMigrationJob) (reconcile.Result, error) {
+	podNamespacedName := types.NamespacedName{Namespace: job.Spec.PodRef.Namespace, Name: job.Spec.PodRef.Name}
+	klog.V(4).Infof("MigrationJob %s try to evict Pod %q by labelling it", job.Name, podNamespacedName)
+	complete, result, err := r.evictCloneSetPod(ctx, job)
+	if err != nil {
+		return result, err
+	} else if !complete {
+		return result, nil
+	}
+	job.Status.Phase = sev1alpha1.PodMigrationJobSucceeded
+	job.Status.Status = "Complete"
+	job.Status.Reason = ""
+	job.Status.Message = fmt.Sprintf("Pod %q has been evicted by CloneSet Controller", podNamespacedName)
+	err = r.Client.Status().Update(ctx, job)
+	return reconcile.Result{}, err
+}
+
+func (r *Reconciler) evictCloneSetPod(ctx context.Context, job *sev1alpha1.PodMigrationJob) (bool, reconcile.Result, error) {
+	_, cond := util.GetCondition(&job.Status, sev1alpha1.PodMigrationJobConditionEviction)
+	if cond != nil && cond.Status == sev1alpha1.PodMigrationJobConditionStatusTrue {
+		return true, reconcile.Result{}, nil
+	}
+	pod := &corev1.Pod{}
+	podNamespacedName := types.NamespacedName{Namespace: job.Spec.PodRef.Namespace, Name: job.Spec.PodRef.Name}
+	err := r.Client.Get(ctx, podNamespacedName, pod)
+	if errors.IsNotFound(err) || (err == nil && cond != nil && job.Spec.PodRef.UID != "" && job.Spec.PodRef.UID != pod.UID) {
+		if job.Status.Status != string(sev1alpha1.PodMigrationJobConditionEviction) {
+			err = r.abortJobByMissingPod(ctx, job, podNamespacedName)
+			return false, reconcile.Result{}, err
+		}
+		cond = &sev1alpha1.PodMigrationJobCondition{
+			Type:   sev1alpha1.PodMigrationJobConditionEviction,
+			Status: sev1alpha1.PodMigrationJobConditionStatusTrue,
+			Reason: sev1alpha1.PodMigrationJobReasonEvictComplete,
+		}
+		err = r.updateCondition(ctx, job, cond)
+		if err == nil {
+			r.eventRecorder.Eventf(job, nil, corev1.EventTypeNormal, sev1alpha1.PodMigrationJobReasonEvictComplete, "Migrating", "Pod %q has been evicted", podNamespacedName)
+		}
+		return true, reconcile.Result{}, err
+	}
+	if err != nil {
+		klog.Errorf("Failed to get target Pod %q, MigrationJob: %s, err: %v", podNamespacedName, job.Name, err)
+		return false, reconcile.Result{}, err
+	}
+
+	if cond != nil && cond.Reason == sev1alpha1.PodMigrationJobReasonEvicting {
+		return false, reconcile.Result{RequeueAfter: defaultRequeueAfter}, nil
+	}
+
+	if pod.ObjectMeta.Labels[CloneSetEvictLabelKey] != CloneSetEvictLabelValue {
+		pod.ObjectMeta.Labels[CloneSetEvictLabelKey] = CloneSetEvictLabelValue
+		err = r.Client.Update(ctx, pod)
+		if err != nil {
+			r.eventRecorder.Eventf(job, nil, corev1.EventTypeWarning, sev1alpha1.PodMigrationJobReasonEvicting, "Migrating", "Failed evict Pod %q caused by %v", podNamespacedName, err)
+			return false, reconcile.Result{}, err
+		}
+		r.arbitrator.TrackEvictedPod(pod)
+	}
+	_, reason := evictor.GetEvictionTriggerAndReason(job.Annotations)
+	cond = &sev1alpha1.PodMigrationJobCondition{
+		Type:    sev1alpha1.PodMigrationJobConditionEviction,
+		Status:  sev1alpha1.PodMigrationJobConditionStatusFalse,
+		Reason:  sev1alpha1.PodMigrationJobReasonEvicting,
+		Message: fmt.Sprintf("Pod %q evicted from node %q by the reason %q", podNamespacedName, pod.Spec.NodeName, reason),
+	}
+	err = r.updateCondition(ctx, job, cond)
+	if err == nil {
+		r.eventRecorder.Eventf(job, nil, corev1.EventTypeNormal, sev1alpha1.PodMigrationJobReasonEvicting, "Migrating", "%s", cond.Message)
+	}
+	return false, reconcile.Result{RequeueAfter: defaultRequeueAfter}, err
 }
 
 // Filter checks if a pod can be evicted

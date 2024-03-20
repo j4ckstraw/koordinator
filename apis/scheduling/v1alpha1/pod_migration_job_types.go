@@ -57,6 +57,7 @@ type PodMigrationJobMode string
 const (
 	PodMigrationJobModeReservationFirst PodMigrationJobMode = "ReservationFirst"
 	PodMigrationJobModeEvictionDirectly PodMigrationJobMode = "EvictDirectly"
+	PodMigrationJobModeCloneSetEvict    PodMigrationJobMode = "CloneSetEvict"
 )
 
 type PodMigrateReservationOptions struct {
