@@ -38,6 +38,7 @@ import (
 	"github.com/koordinator-sh/koordinator/pkg/scheduler/frameworkext"
 	frameworkexthelper "github.com/koordinator-sh/koordinator/pkg/scheduler/frameworkext/helper"
 	"github.com/koordinator-sh/koordinator/pkg/scheduler/plugins/loadaware/estimator"
+	"github.com/koordinator-sh/koordinator/pkg/util"
 )
 
 const (
@@ -145,6 +146,9 @@ func (p *Plugin) Filter(ctx context.Context, state *framework.CycleState, pod *c
 		p.args.NodeMetricExpirationSeconds != nil && isNodeMetricExpired(nodeMetric, *p.args.NodeMetricExpirationSeconds) {
 		return nil
 	}
+
+	node = node.DeepCopy()
+	util.RewriteAllocatable(node)
 
 	filterProfile := generateUsageThresholdsFilterProfile(node, p.args)
 	if len(filterProfile.ProdUsageThresholds) > 0 && extension.GetPodPriorityClassWithDefault(pod) == extension.PriorityProd {
@@ -288,6 +292,8 @@ func (p *Plugin) Score(ctx context.Context, state *framework.CycleState, pod *co
 		return 0, nil
 	}
 
+	node = node.DeepCopy()
+	util.RewriteAllocatable(node)
 	prodPod := extension.GetPodPriorityClassWithDefault(pod) == extension.PriorityProd && p.args.ScoreAccordingProdUsage
 	podMetrics := buildPodMetricMap(p.podLister, nodeMetric, prodPod)
 
