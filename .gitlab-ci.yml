@@ -1,0 +1,25 @@
+stages:
+  - test
+  - scan
+
+go_test:
+  stage: test
+  image: cr.d.xiaomi.net/miflow/golang:1.17-centos7.3 # 对应build镜像
+  script:
+    - go test -v -mod=mod ./... -coverprofile=coverage.out || true
+  artifacts:
+    paths:
+      - coverage.out
+
+sonar_scan:
+  stage: scan
+  dependencies:
+    - go_test
+  script:
+    - fusion-cli sonar config --token $CI_SONAR_TOKEN
+    - fusion-cli sonar scan --key=$CI_PROJECT_ID-$CI_PROJECT_NAME --ignore-quality-gate --sources . --report -- 
+      -Dsonar.exclusions='**/vendor/**','**/*_test.go','**/build/**' 
+      -Dsonar.test.exclusions='**/vendor/**','**/*_test.go' 
+      -Dsonar.go.coverage.reportPaths='coverage.out' 
+      -Dsonar.branch.name=$CI_COMMIT_REF_NAME
+      -Dsonar.verbose
