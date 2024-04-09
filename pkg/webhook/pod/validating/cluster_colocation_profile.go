@@ -77,7 +77,11 @@ func validateRequiredQoSClass(pod *corev1.Pod) field.ErrorList {
 		return nil
 	}
 	qosClass := extension.GetPodQoSClassRaw(pod)
-	if qosClass == extension.QoSBE {
+	priority := extension.GetPodPriorityClassRaw(pod)
+
+	// allow mid with LS
+	if (qosClass == extension.QoSLS && priority == extension.PriorityMid) ||
+		qosClass == extension.QoSBE {
 		return nil
 	}
 	return field.ErrorList{field.Required(field.NewPath("labels", extension.LabelPodQoS), "must specify koordinator QoS BE with koordinator colocation resources")}
