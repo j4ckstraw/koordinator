@@ -161,6 +161,38 @@ func TestClusterColocationProfileValidatingPod(t *testing.T) {
 			wantReason:  `labels.koordinator.sh/qosClass: Required value: must specify koordinator QoS BE with koordinator colocation resources`,
 		},
 		{
+			name:      "allow batch + LS",
+			operation: admissionv1.Create,
+			newPod: &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						extension.LabelPodPriority: "7999",
+						extension.LabelPodQoS:      string(extension.QoSLS),
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name: "test-container-a",
+							Resources: corev1.ResourceRequirements{
+								Limits: map[corev1.ResourceName]resource.Quantity{
+									extension.BatchCPU:    resource.MustParse("1"),
+									extension.BatchMemory: resource.MustParse("4Gi"),
+								},
+								Requests: map[corev1.ResourceName]resource.Quantity{
+									extension.BatchCPU:    resource.MustParse("1"),
+									extension.BatchMemory: resource.MustParse("4Gi"),
+								},
+							},
+						},
+					},
+					Priority: pointer.Int32(extension.PriorityMidValueMin),
+				},
+			},
+			wantAllowed: true,
+			wantReason:  "",
+		},
+		{
 			name:      "validate immutable priorityClass",
 			operation: admissionv1.Update,
 			newPod: &corev1.Pod{
